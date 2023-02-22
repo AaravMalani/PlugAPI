@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plugapi"
+version = "1.0"
+authors = [
+  { name="Aarav Malani", email="aarav.malani@gmail.com" },
+]
+description = "A lightweight, speedy HTTP(S) server"
+readme = "README.md"
+requires-python = ">=3.6"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/AaravMalani/PlugAPI"
+"Bug Tracker" = "https://github.com/AaravMalani/PlugAPI/issues"

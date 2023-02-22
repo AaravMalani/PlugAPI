@@ -1,0 +1,9 @@
+LICENSE
+README.md
+pyproject.toml
+src/plugapi/__init__.py
+src/plugapi/http.py
+src/plugapi.egg-info/PKG-INFO
+src/plugapi.egg-info/SOURCES.txt
+src/plugapi.egg-info/dependency_links.txt
+src/plugapi.egg-info/top_level.txt
