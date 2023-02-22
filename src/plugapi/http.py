@@ -7,6 +7,7 @@ from enum import Enum, auto
 from dataclasses import dataclass, field
 import mimetypes
 import ssl
+from urllib.parse import parse_qs
 
 # Status messages from status codes
 status_codes = {
@@ -166,6 +167,33 @@ class FileResponse(Response):
             self.body = self.body.read()
 
 
+def parse_multipart(body: bytes, boundary: bytes) -> dict[str, str]:
+    """
+    Parses a multipart form
+
+    Arguments:
+        body {str} -- The body of the request
+        boundary {str} -- The boundary of the multipart form
+
+    Returns:
+        dict[str, str] -- The parsed multipart form
+    """
+    form = {}
+    for part in body.split(b"--"+boundary)[1:-1]:
+        data = part.split(b"\r\n\r\n")
+        headers = data[0].split(b"\r\n")[1:]
+        parts = data[1:]
+
+        type = b"application/octet-stream"
+        name = None
+        if headers[0].startswith(b"Content-Disposition"):
+            name = headers[0].split(b";")[1].split(b"=")[1].strip(b'"')
+            headers = headers[1:]   
+        if headers[0].startswith(b"Content-Type"):
+            type = headers[0].split(b":")[1].strip()
+            headers = headers[1:]
+        form[name.decode()] = {"type": type.decode(), "data": b"\r\n\r\n".join(parts)[:-2]}
+    return form
 def json_middleware(socket: socket.socket, type: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:
     """
     Middleware for parsing JSON
@@ -179,10 +207,63 @@ def json_middleware(socket: socket.socket, type: str, headers: dict[str, str], b
     Returns:
         tuple[dict[str, str], str | list | dict] -- The headers and body of the request
     """
-    if headers.get("Content-Type", None) == "application/json":
+    if headers.get("Content-Type", None).startswith("application/json"):
         body = json.loads(body)
     return headers, body
 
+def cors_middleware(socket: socket.socket, type: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:
+    """
+    Middleware for adding CORS headers
+
+    Arguments:
+        socket {socket.socket} -- The socket of the client
+        type {str} -- The type of the request
+        headers {dict[str, str]} -- The headers of the request
+        body {str | list | dict} -- The body of the request
+
+    Returns:
+        tuple[dict[str, str], str | list | dict] -- The headers and body of the request
+    """
+    headers["Access-Control-Allow-Origin"] = "*"
+    headers["Access-Control-Allow-Headers"] = "*"
+    headers["Access-Control-Allow-Methods"] = "*"
+    return headers, body
+
+def url_encoded_middleware(socket: socket.socket, type: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:
+    """
+    Middleware for parsing URL encoded data
+
+    Arguments:
+        socket {socket.socket} -- The socket of the client
+        type {str} -- The type of the request
+        headers {dict[str, str]} -- The headers of the request
+        body {str | list | dict} -- The body of the request
+
+    Returns:
+        tuple[dict[str, str], str | list | dict] -- The headers and body of the request
+    """
+    if headers.get("Content-Type", None).startswith("application/x-www-form-urlencoded"):
+        body = parse_qs(body)
+    return headers, body
+
+def multipart_middleware(socket: socket.socket, type: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:
+    """
+    Middleware for parsing multipart data
+
+    Arguments:
+        socket {socket.socket} -- The socket of the client
+        type {str} -- The type of the request
+        headers {dict[str, str]} -- The headers of the request
+        body {str | list | dict} -- The body of the request
+
+    Returns:
+        tuple[dict[str, str], str | list | dict] -- The headers and body of the request
+    """
+    if headers.get("Content-Type", None).startswith("multipart/form-data"):
+        boundary = headers.get("Content-Type").split("boundary=")[1].encode()
+        body = parse_multipart(body.encode(), boundary)
+        
+    return headers, body
 
 class AutoName(Enum):
     """
@@ -386,8 +467,8 @@ class Server:
 
         query = {}
         if "?" in path:
-            path, query = path.split("?")
-            for key, value in [q.split("=") for q in query.split("&")]:
+            path, query_string = path.split("?")
+            for key, value in [q.split("=") for q in query_string.split("&")]:
                 if key in query:
                     query[key] += [value]
                 else:
@@ -413,7 +494,18 @@ class Server:
             callable -- The decorator
         """
         def wrapper(func: callable):
-            for tp in type if isinstance(type, list) else [type]:
+            for tp in (type if isinstance(type, list) else [type]):
                 self.handlers[tp][path] = func
             return func
         return wrapper
+
+server = Server(8080)
+server.add_middlewares(cors_middleware, multipart_middleware)
+
+@server.handler("/test", type=RequestType.POST)
+def test_handler(request: Request):
+    print(request.body)
+    return Response("Hello World")
+
+server.run()
+
