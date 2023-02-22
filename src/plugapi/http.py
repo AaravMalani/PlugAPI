@@ -499,13 +499,4 @@ class Server:
             return func
         return wrapper
 
-server = Server(8080)
-server.add_middlewares(cors_middleware, multipart_middleware)
-
-@server.handler("/test", type=RequestType.POST)
-def test_handler(request: Request):
-    print(request.body)
-    return Response("Hello World")
-
-server.run()
 
