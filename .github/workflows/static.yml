@@ -21,8 +21,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
-
+  
+  
+  deploy: 
     runs-on: ubuntu-latest
 
     steps:
@@ -44,6 +45,7 @@ jobs:
         password: ${{ secrets.PYPI_API_TOKEN }}
 
   sphinx-build:
+    if: ${{ always() }}
     needs:
       - deploy
     runs-on: ubuntu-latest

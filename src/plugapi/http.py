@@ -558,6 +558,7 @@ class Server:
                     Request(path, RequestMethod(request_method), headers, body, query)).send(client)
             else:
                 path = path.split("/")
+                k = False
                 for i in self.handlers.get(RequestMethod(request_method), {}):
                     params = {}
 
