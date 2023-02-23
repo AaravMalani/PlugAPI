@@ -11,13 +11,14 @@ Usage
 
 .. code:: py
 
-   from plugapi import Server, handler, JSONResponse, json_middleware
+   from plugapi import Server, JSONResponse, json_middleware
 
-   @handler(path='/')
+   server = Server(443, https=True, certfile='./localhost.pem', keyfile='./localhost-key.pem') 
+   @server.handler(path='/')
    def root(req):
        return JSONResponse({'a': 'b'})
 
-   server = Server(443, https=True, certfile='./localhost.pem', keyfile='./localhost-key.pem') 
+   
    server.add_middlewares(json_middleware)
    server.run()
 
@@ -29,7 +30,7 @@ Features
    handlers are called They can be added using
    ``server.add_middlewares(middleware, middleware2, ....)`` For
    example, the default JSON middleware is given below
-   
+
    .. code-block:: py
 
      def json_middleware(socket: socket.socket, type: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:

@@ -17,3 +17,8 @@ Version 1.2
    such
 -  Added error handling for rogue malformed requests
 -  Added documentation
+
+Version 1.2.1
+-------------
+
+Fixed a bug where ``/`` would not work

@@ -9,7 +9,7 @@
 project = 'PlugAPI'
 copyright = '2023, Aarav Malani'
 author = 'Aarav Malani'
-release = '1.2'
+release = '1.2.1'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
