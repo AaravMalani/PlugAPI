@@ -3,11 +3,17 @@ import json
 import socket
 from threading import Thread, Lock, current_thread
 import time
-from enum import Enum, auto
+from enum import Enum as _Enum
+from enum import auto
 from dataclasses import dataclass, field
 import mimetypes
 import ssl
+import traceback
 from urllib.parse import parse_qs
+
+"""
+This file contains the HTTP server class and related classes
+"""
 
 # Status messages from status codes
 status_codes = {
@@ -76,7 +82,6 @@ status_codes = {
     511: "Network Authentication Required"
 }
 
-
 @dataclass
 class Response:
     """
@@ -127,6 +132,25 @@ class JSONResponse(Response):
         self.headers["Content-Type"] = "application/json"
         self.body = json.dumps(self.body)
 
+@dataclass
+class JSONPResponse(Response):
+    """
+    Class for creating a JSONP response to send to a client
+
+    Inherits from:
+        Response -- The base response class
+
+    Attributes:
+        body {str} -- The body of the response
+        callback {str} -- The name of the callback function (default: {"callback"})
+    """
+
+    callback: str = "callback"
+
+    def __post_init__(self):
+        self.headers["Content-Type"] = "application/javascript"
+        self.body = f"{self.callback}({json.dumps(self.body)})"
+
 
 @dataclass
 class HTMLResponse(Response):
@@ -155,16 +179,42 @@ class FileResponse(Response):
 
     Attributes:
         body {io.TextIOBase | io.BytesIO | str} -- The body of the response
+        attachment {bool} -- Whether to display the file in the browser (inline) or as an attachment (default: {False (inline)})
+        includeFilename {bool} -- Whether to include the filename in the Content-Disposition header (default: {True})
     """
-
+    attachment: bool = False
+    includeFilename: bool = True
     def __post_init__(self):
         if isinstance(self.body, str):
             with open(self.body, "rb") as file:
+                name = file.name
                 self.body = file.read()
         else:
             self.headers["Content-Type"] = mimetypes.guess_type(
                 self.body.name)[0] or "application/octet-stream"
+            name = self.body.name
             self.body = self.body.read()
+        self.headers["Content-Disposition"] = ('attachment' if self.attachment else 'inline') + (('; filename='+name) if self.includeFilename else '')
+
+@dataclass
+class RedirectResponse(Response):
+    """
+    Class for creating a redirect response to send to a client
+
+    Inherits from:
+        Response -- The base response class
+
+    Attributes:
+        to {str} -- The URL to redirect to (default: {""} (due to dataclass limitations))
+    """
+    to : str = ""
+    body : str = ""
+    def __post_init__(self):
+        if self.status not in range(300, 401):
+            self.status = 308
+        self.headers["Location"] = self.to
+    
+
 
 
 def parse_multipart(body: bytes, boundary: bytes) -> dict[str, str]:
@@ -194,13 +244,13 @@ def parse_multipart(body: bytes, boundary: bytes) -> dict[str, str]:
             headers = headers[1:]
         form[name.decode()] = {"type": type.decode(), "data": b"\r\n\r\n".join(parts)[:-2]}
     return form
-def json_middleware(socket: socket.socket, type: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:
+def json_middleware(socket: socket.socket, method: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:
     """
     Middleware for parsing JSON
 
     Arguments:
         socket {socket.socket} -- The socket of the client
-        type {str} -- The type of the request
+        method {str} -- The method of the request
         headers {dict[str, str]} -- The headers of the request
         body {str | list | dict} -- The body of the request
 
@@ -211,13 +261,13 @@ def json_middleware(socket: socket.socket, type: str, headers: dict[str, str], b
         body = json.loads(body)
     return headers, body
 
-def cors_middleware(socket: socket.socket, type: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:
+def cors_middleware(socket: socket.socket, method: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:
     """
     Middleware for adding CORS headers
 
     Arguments:
         socket {socket.socket} -- The socket of the client
-        type {str} -- The type of the request
+        method {str} -- The method of the request
         headers {dict[str, str]} -- The headers of the request
         body {str | list | dict} -- The body of the request
 
@@ -229,13 +279,13 @@ def cors_middleware(socket: socket.socket, type: str, headers: dict[str, str], b
     headers["Access-Control-Allow-Methods"] = "*"
     return headers, body
 
-def url_encoded_middleware(socket: socket.socket, type: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:
+def url_encoded_middleware(socket: socket.socket, method: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:
     """
     Middleware for parsing URL encoded data
 
     Arguments:
         socket {socket.socket} -- The socket of the client
-        type {str} -- The type of the request
+        method {str} -- The method of the request
         headers {dict[str, str]} -- The headers of the request
         body {str | list | dict} -- The body of the request
 
@@ -246,13 +296,13 @@ def url_encoded_middleware(socket: socket.socket, type: str, headers: dict[str, 
         body = parse_qs(body)
     return headers, body
 
-def multipart_middleware(socket: socket.socket, type: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:
+def multipart_middleware(socket: socket.socket, method: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:
     """
     Middleware for parsing multipart data
 
     Arguments:
         socket {socket.socket} -- The socket of the client
-        type {str} -- The type of the request
+        method {str} -- The method of the request
         headers {dict[str, str]} -- The headers of the request
         body {str | list | dict} -- The body of the request
 
@@ -265,7 +315,28 @@ def multipart_middleware(socket: socket.socket, type: str, headers: dict[str, st
         
     return headers, body
 
-class AutoName(Enum):
+def cookie_middleware(socket: socket.socket, method: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:
+    """
+    Middleware for parsing cookies
+
+    Arguments:
+        socket {socket.socket} -- The socket of the client
+        method {str} -- The method of the request
+        headers {dict[str, str]} -- The headers of the request
+        body {str | list | dict} -- The body of the request
+
+    Returns:
+        tuple[dict[str, str], str | list | dict] -- The headers and body of the request
+    """
+    if "Cookie" in headers:
+        cookies = {}
+        for cookie in headers["Cookie"].split(";"):
+            name, value = cookie.split("=")
+            cookies[name] = value
+        headers["Cookie"] = cookies
+    return headers, body
+
+class AutoName(_Enum):
     """
     Class for creating an enum with the name of the enum as the value
 
@@ -288,9 +359,9 @@ class AutoName(Enum):
         return name
 
 
-class RequestType(AutoName):
+class RequestMethod(AutoName):
     """
-    The enum containing HTTP request types
+    The enum containing HTTP request methods
 
     Inherits from:
         AutoName -- The base enum class
@@ -313,17 +384,21 @@ class Request:
 
     Attributes:
         path {str} -- The path of the request
-        type {RequestType} -- The type of the request
+        method {RequestMethod} -- The method of the request
         headers {dict[str, str]} -- The request headers
         body {str | list | dict} -- The body of the request (if any)
         query {dict[str, list[str]]} -- The query string at the end of the path
+        params {dict[str, str]} -- The parameters in the path
+        cookie {str | dict[str, str]} -- The cookie of the request (if any) (dict if parsed by cookie_middleware)
     """
     path: str
-    type: RequestType
+    method: RequestMethod
     headers: dict[str, str]
     body: str | list | dict
     query: dict[str, list[str]]
-
+    params: dict[str, str]
+    cookie: str | dict[str, str]
+    
 
 class Server:
     """
@@ -332,29 +407,31 @@ class Server:
     Attributes:
         host {str} -- The host of the server
         port {int} -- The port of the server
-        timeout {int} -- The timeout before the server closes the connection
+        timeout {int} -- The timeout before the server closes the connection 
         socket {socket.socket} -- The socket of the server
         threads {list[Thread]} -- The connection threads
         lock {Lock} -- The lock for the threads list
-        handlers {dict[RequestType, dict[str, callable]]} -- The handlers for the requests
+        handlers {dict[RequestMethod, dict[str, callable]]} -- The handlers for the requests
         https {bool} -- Whether the server is using HTTPS
         certfile {str | None} -- The certificate file for HTTPS
         keyfile {str | None} -- The key file for HTTPS
         middlewares {list[callable]} -- The middlewares for the requests
         context {ssl.SSLContext | None} -- The SSL context for HTTPS
+        shouldLogErrors {bool} -- Whether the server should log errors to the console
     """
 
-    def __init__(self, port: int, timeout: int = 5, host: str = "localhost", https: bool = False, certfile: str | None = None, keyfile: str | None = None):
+    def __init__(self, port: int, timeout: int = 5, host: str = "localhost", https: bool = False, certfile: str | None = None, keyfile: str | None = None, shouldLogErrors: bool = True):
         """
         Constructor for the Server class
 
         Arguments:
-            port {int} -- The port of the server
-            timeout {int} -- The timeout before the server closes the connection
-            host {str} -- The host of the server
-            https {bool} -- Whether the server is using HTTPS
-            certfile {str | None} -- The certificate file for HTTPS
-            keyfile {str | None} -- The key file for HTTPS
+            port {int} -- The port of the server 
+            timeout {int} -- The timeout before the server closes the connection (default: {5})
+            host {str} -- The host of the server (default: {"localhost"}) 
+            https {bool} -- Whether the server is using HTTPS (default: {False})
+            certfile {str | None} -- The certificate file for HTTPS (default: {None})
+            keyfile {str | None} -- The key file for HTTPS (default: {None})
+            shouldLogErrors {bool} -- Whether the server should log errors to the console (default: {True})
         """
         self.host = host
         self.port = port
@@ -362,21 +439,22 @@ class Server:
         self.socket: socket.socket
         self.threads: list[Thread] = []
         self.lock: Lock = Lock()
-        self.handlers: dict[RequestType, dict[str, callable]] = {
-            RequestType.GET: {},
-            RequestType.POST: {},
-            RequestType.PUT: {},
-            RequestType.DELETE: {},
-            RequestType.OPTIONS: {},
-            RequestType.HEAD: {},
-            RequestType.TRACE: {},
-            RequestType.CONNECT: {}
+        self.handlers: dict[RequestMethod, dict[str, callable]] = {
+            RequestMethod.GET: {},
+            RequestMethod.POST: {},
+            RequestMethod.PUT: {},
+            RequestMethod.DELETE: {},
+            RequestMethod.OPTIONS: {},
+            RequestMethod.HEAD: {},
+            RequestMethod.TRACE: {},
+            RequestMethod.CONNECT: {}
         }
         self.https = https
         self.certfile = certfile
         self.keyfile = keyfile
         self.middlewares: list[callable] = []
         self.context: ssl.SSLContext | None = None
+        self.shouldLogErrors = shouldLogErrors
 
     def add_middlewares(self, *middlewares):
         """
@@ -440,63 +518,99 @@ class Server:
             encoded_request += data
             if b"\r\n\r\n" in encoded_request:
                 break
-        request = encoded_request.decode().split("\r\n\r\n")[0].split("\r\n")
-        request_type, path, http = request[0].split(" ")
-        if http != "HTTP/1.1":
-            Response("HTTP Version Not Supported", 505).send(client)
-            return clean()
-        headers = {}
-        for header in request[1:-2]:
-            key, value = header.split(": ")
-            headers[key] = value
+        try:
+            request = encoded_request.decode().split("\r\n\r\n")[0].split("\r\n")
+            request_method, path, http = request[0].split(" ")
+            if http != "HTTP/1.1":
+                Response("HTTP Version Not Supported", 505).send(client)
+                return clean()
+            headers = {}
+            for header in request[1:-2]:
+                key, value = header.split(": ")
+                headers[key] = value
 
-        body = ""
-        if request_type != "GET":
-            if "Content-Length" not in headers:
-                client.setblocking(False)
+            body = ""
+            if request_method != "GET":
+                if "Content-Length" not in headers:
+                    client.setblocking(False)
 
-                body = encoded_request[encoded_request.find(b"\r\n\r\n") + 3:] + client.recv(1024)
-                client.setblocking(True)
-            else:
-                body = encoded_request[encoded_request.find(b"\r\n\r\n") + 3:]
-                body += client.recv(int(headers["Content-Length"]) - len(body))
-            body = body.decode() if isinstance(body, bytes) else body
-
-        for middleware in self.middlewares:
-            headers, body = middleware(client, request_type, headers, body)
-
-        query = {}
-        if "?" in path:
-            path, query_string = path.split("?")
-            for key, value in [q.split("=") for q in query_string.split("&")]:
-                if key in query:
-                    query[key] += [value]
+                    body = encoded_request[encoded_request.find(b"\r\n\r\n") + 3:] + client.recv(1024)
+                    client.setblocking(True)
                 else:
-                    query[key] = [value]
+                    body = encoded_request[encoded_request.find(b"\r\n\r\n") + 3:]
+                    body += client.recv(int(headers["Content-Length"]) - len(body))
+                body = body.decode() if isinstance(body, bytes) else body
 
-        if path in self.handlers.get(RequestType(request_type), {}):
-            self.handlers[RequestType(request_type)][path](
-                Request(path, RequestType(request_type), headers, body, query)).send(client)
-        else:
-            Response("Not Found", status=404).send(client)
+            for middleware in self.middlewares:
+                headers, body = middleware(client, request_method, headers, body)
 
+            query = {}
+            if "?" in path:
+                path, query_string = path.split("?")
+                for key, value in [q.split("=") for q in query_string.split("&")]:
+                    if key in query:
+                        query[key] += [value]
+                    else:
+                        query[key] = [value]
+            params = {}
+            if path in self.handlers.get(RequestMethod(request_method), {}):
+                self.handlers[RequestMethod(request_method)][path](
+                    Request(path, RequestMethod(request_method), headers, body, query)).send(client)
+            else:
+                path = path.split("/")
+                for i in self.handlers.get(RequestMethod(request_method), {}):
+                    params = {}
+
+                    i = i.split("/")
+                    k = False
+                    if len(i) != len(path):
+                        continue
+                    
+                    for i_e, path_e in zip(i, path):
+                        if i_e.startswith(":"):
+                            params[i_e[1:]] = path_e
+                            k = True
+                        elif i_e != path_e:
+                            break
+                    if k:
+                        try:
+                            self.handlers[RequestMethod(request_method)]["/".join(i)](
+                            Request(
+                                path=path, 
+                                method=RequestMethod(request_method), 
+                                headers=headers, 
+                                body=body, 
+                                query=query, 
+                                params=params, 
+                                cookie=headers.get("Cookie", "")
+                            )).send(client)
+                        except Exception:
+                            Response("Internal Server Error", 500).send(client)
+                            traceback.print_exc()
+                        break
+                if not k:    
+                    Response("Not Found", status=404).send(client)
+        except Exception as e:
+            Response("Malformed Request", 400).send(client)
+            if self.shouldLogErrors:
+                traceback.print_exc()
+                    
+        
         clean()
 
-    def handler(self, path: str = None, type: RequestType | list[RequestType] = RequestType.GET) -> callable:
+    def handler(self, path: str = None, method: RequestMethod | list[RequestMethod] = RequestMethod.GET) -> callable:
         """
         The decorator for the handlers
 
         Arguments:
             path {str} -- The path of the handler
-            type {RequestType | list[RequestType]} -- The type of the handler (default: {RequestType.GET})
+            method {RequestMethod | list[RequestMethod]} -- The HTTP method the handler can receive (default: {RequestMethod.GET})
 
         Returns:
             callable -- The decorator
         """
         def wrapper(func: callable):
-            for tp in (type if isinstance(type, list) else [type]):
-                self.handlers[tp][path] = func
+            for methd in (method if isinstance(method, list) else [method]):
+                self.handlers[methd][path] = func
             return func
         return wrapper
-
-

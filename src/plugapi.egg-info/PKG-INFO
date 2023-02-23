@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: plugapi
-Version: 1.0
+Version: 1.1
 Summary: A lightweight, speedy HTTP(S) server
 Author-email: Aarav Malani <aarav.malani@gmail.com>
 Project-URL: Homepage, https://github.com/AaravMalani/PlugAPI
@@ -42,6 +42,7 @@ server.run()
             body = json.loads(body)
         return headers, body
     ```
+    There are numerous built-in middlewares including `multipart_middleware`, `url_encoded_middleware`, `cookie_middleware` and more!
 - Different utility responses
     Responses like `FileResponse`, `JSONResponse` and `HTMLResponse` are pre-provided to allow you to return data without having to set the content type
 
