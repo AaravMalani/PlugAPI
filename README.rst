@@ -29,11 +29,12 @@ Features
    handlers are called They can be added using
    ``server.add_middlewares(middleware, middleware2, ....)`` For
    example, the default JSON middleware is given below
-   .. code:: py
-        def json_middleware(socket: socket.socket, type: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:
-            if headers.get("Content-Type", None) == "application/json":             
-            body = json.loads(body)         
-            return headers, body``
+   .. code-block:: py
+
+     def json_middleware(socket: socket.socket, type: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:
+          if headers.get("Content-Type", None) == "application/json":             
+          body = json.loads(body)         
+          return headers, body``
    There are numerous built-in middlewares including
    ``multipart_middleware``, ``url_encoded_middleware``,
    ``cookie_middleware`` and more!
