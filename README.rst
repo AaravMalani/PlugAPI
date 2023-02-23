@@ -29,6 +29,7 @@ Features
    handlers are called They can be added using
    ``server.add_middlewares(middleware, middleware2, ....)`` For
    example, the default JSON middleware is given below
+   
    .. code-block:: py
 
      def json_middleware(socket: socket.socket, type: str, headers: dict[str, str], body: str | list | dict) -> tuple[dict[str, str], str | list | dict]:
