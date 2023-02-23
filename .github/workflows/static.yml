@@ -58,7 +58,7 @@ jobs:
           python-version: '3.x'
       - name: Download sphinx + run
         run: |
-          pip install sphinx
+          pip install sphinx plugapi
           cd docs
           make html
           cd ..
