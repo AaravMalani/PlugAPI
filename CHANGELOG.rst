@@ -22,3 +22,10 @@ Version 1.2.1
 -------------
 
 Fixed a bug where ``/`` would not work
+
+Version 1.2.2
+-------------
+
+Fixed a bug completely breaking the server 
+(Replaced ``None.startswith with`` ``"".startswith`` for default ``Content-Type``
+ and passed empty params and cookies to the ``Request`` constructor)

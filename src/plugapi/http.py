@@ -257,7 +257,7 @@ def json_middleware(socket: socket.socket, method: str, headers: dict[str, str],
     Returns:
         tuple[dict[str, str], str | list | dict] -- The headers and body of the request
     """
-    if headers.get("Content-Type", None).startswith("application/json"):
+    if headers.get("Content-Type", "").startswith("application/json"):
         body = json.loads(body)
     return headers, body
 
@@ -292,7 +292,7 @@ def url_encoded_middleware(socket: socket.socket, method: str, headers: dict[str
     Returns:
         tuple[dict[str, str], str | list | dict] -- The headers and body of the request
     """
-    if headers.get("Content-Type", None).startswith("application/x-www-form-urlencoded"):
+    if headers.get("Content-Type", "").startswith("application/x-www-form-urlencoded"):
         body = parse_qs(body)
     return headers, body
 
@@ -309,7 +309,7 @@ def multipart_middleware(socket: socket.socket, method: str, headers: dict[str, 
     Returns:
         tuple[dict[str, str], str | list | dict] -- The headers and body of the request
     """
-    if headers.get("Content-Type", None).startswith("multipart/form-data"):
+    if headers.get("Content-Type", "").startswith("multipart/form-data"):
         boundary = headers.get("Content-Type").split("boundary=")[1].encode()
         body = parse_multipart(body.encode(), boundary)
         
@@ -552,10 +552,10 @@ class Server:
                         query[key] += [value]
                     else:
                         query[key] = [value]
-            params = {}
+            
             if path in self.handlers.get(RequestMethod(request_method), {}):
                 self.handlers[RequestMethod(request_method)][path](
-                    Request(path, RequestMethod(request_method), headers, body, query)).send(client)
+                    Request(path, RequestMethod(request_method), headers, body, query, {}, headers.get("Cookie", ""))).send(client)
             else:
                 path = path.split("/")
                 k = False

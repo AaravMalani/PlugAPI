@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "plugapi"
-version = "1.2.1"
+version = "1.2.2"
 authors = [
   { name="Aarav Malani", email="aarav.malani@gmail.com" },
 ]

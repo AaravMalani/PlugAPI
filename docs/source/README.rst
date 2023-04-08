@@ -48,4 +48,4 @@ To-Do
 -----
 
 -  ☐ Websocket support
--  ☐ Parameters in paths
+-  ☑ Parameters in paths
