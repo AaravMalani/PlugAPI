@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "plugapi"
-version = "1.2.2"
+version = "1.2.3"
 authors = [
   { name="Aarav Malani", email="aarav.malani@gmail.com" },
 ]
@@ -17,6 +17,13 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
+
 [project.urls]
 "Homepage" = "https://github.com/AaravMalani/PlugAPI"
 "Bug Tracker" = "https://github.com/AaravMalani/PlugAPI/issues"
+
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+]
+pythonpath = "src"
